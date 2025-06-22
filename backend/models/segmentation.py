@@ -88,15 +88,24 @@ class SemanticSegmentationModel:
             self.logger.debug(f"Resizing mask from {segmentation_mask.shape} to {original_size}")
             segmentation_mask = cv2.resize(segmentation_mask, original_size)
             
-            # Convert original image to numpy array
+            # Ensure both images have same number of channels
             original_array = np.array(image)
+            if len(original_array.shape) == 2:  # Grayscale
+                original_array = cv2.cvtColor(original_array, cv2.COLOR_GRAY2RGB)
+            elif original_array.shape[2] == 4:  # RGBA
+                original_array = cv2.cvtColor(original_array, cv2.COLOR_RGBA2RGB)
+            
+            # Ensure segmentation mask is 3-channel
+            if len(segmentation_mask.shape) == 2:
+                segmentation_mask = cv2.cvtColor(segmentation_mask, cv2.COLOR_GRAY2RGB)
             
             # Create overlay (blend original image with segmentation mask)
             alpha = 0.6  # Transparency factor
-            overlay = cv2.addWeighted(original_array, alpha, segmentation_mask, 1-alpha, 0)
+            overlay = cv2.addWeighted(original_array.astype(np.uint8), alpha, 
+                                    segmentation_mask.astype(np.uint8), 1-alpha, 0)
             
             # Convert back to PIL Image
-            result_image = Image.fromarray(overlay.astype(np.uint8))
+            result_image = Image.fromarray(overlay)
             
             total_time = time.time() - start_time
             self.logger.info(f"Segmentation completed successfully in {total_time:.3f}s total")
@@ -106,6 +115,7 @@ class SemanticSegmentationModel:
         except Exception as e:
             self.logger.error(f"Error during segmentation: {e}")
             self.logger.error(f"Segmentation error traceback:", exc_info=True)
+            # Return original image on error instead of causing server crash
             return image
     
     def create_colored_mask(self, predictions):
@@ -157,5 +167,11 @@ class SemanticSegmentationModel:
             
         return colored_mask
 
-# Global model instance
-segmentation_model = SemanticSegmentationModel()
+# Global model instance - with safe initialization
+try:
+    segmentation_model = SemanticSegmentationModel()
+except Exception as e:
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.error(f"Failed to initialize segmentation model: {e}")
+    segmentation_model = None
