@@ -36,23 +36,24 @@ formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(messag
 
 # Create handlers
 stdout_handler = logging.StreamHandler(sys.stdout)
-stdout_handler.setLevel(logging.INFO)
-stdout_handler.addFilter(StdoutFilter())
+stdout_handler.setLevel(logging.DEBUG)
+#stdout_handler.addFilter(StdoutFilter())
 stdout_handler.setFormatter(formatter)
 
 stderr_handler = logging.StreamHandler(sys.stderr)
 stderr_handler.setLevel(logging.WARNING)
-stderr_handler.addFilter(StderrFilter())
+#stderr_handler.addFilter(StderrFilter())
 stderr_handler.setFormatter(formatter)
 
 # Configure root logger
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     handlers=[stdout_handler, stderr_handler]
 )
 
 logger = logging.getLogger(__name__)
 
+logger.info(f"segmentation {SEGMENTATION_AVAILABLE}")
 app = FastAPI(title="Semantic Segmentation API")
 
 # Request logging middleware
@@ -88,6 +89,7 @@ def get_cors_origins():
         "http://localhost:3000",    # Alternative React dev server
         "http://localhost",         # Production nginx (default port 80)
         "http://localhost:80",      # Production nginx (explicit port)
+        "http://localhost:8000",   
     ]
     
     # Add custom origins from environment variable
@@ -141,8 +143,14 @@ async def upload_image(file: UploadFile = File(...)):
         # Perform semantic segmentation if available, otherwise return original
         if SEGMENTATION_AVAILABLE and segmentation_model:
             logger.info("Starting semantic segmentation")
-            segmented_image = segmentation_model.segment_image(image)
-            logger.info("Segmentation completed successfully")
+            try:
+                segmented_image = segmentation_model.segment_image(image)
+                #segmented_image = image
+                logger.info("Segmentation completed successfully")
+            except Exception as e:
+                logger.error(f"Segmentation failed: {e}")
+                logger.error(f"Fallback to original image")
+                segmented_image = image  # Fallback to original image
         else:
             logger.warning("Segmentation model not available, returning original image")
             segmented_image = image  # Fallback to original image
@@ -171,7 +179,8 @@ async def upload_image(file: UploadFile = File(...)):
             }
         }
     
-    except HTTPException:
+    except HTTPException as e:
+        logger.error(f"{e}")
         raise
     except Exception as e:
         logger.error(f"Error processing uploaded image: {str(e)}")
@@ -215,8 +224,13 @@ async def segment_from_url(image_url: str):
         # Perform semantic segmentation if available, otherwise return original
         if SEGMENTATION_AVAILABLE and segmentation_model:
             logger.info("Starting semantic segmentation on URL image")
-            segmented_image = segmentation_model.segment_image(image)
-            logger.info("Segmentation completed successfully")
+            try:
+                segmented_image = segmentation_model.segment_image(image)
+                logger.info("Segmentation completed successfully")
+            except Exception as e:
+                logger.error(f"Segmentation failed: {e}")
+                logger.error(f"Fallback to original image")
+                segmented_image = image  # Fallback to original image
         else:
             logger.warning("Segmentation model not available, returning original image")
             segmented_image = image  # Fallback to original image
